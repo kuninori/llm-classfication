@@ -1,6 +1,9 @@
 import torch
 from tqdm import trange, tqdm
 from torch.optim import AdamW
+from torch.utils.data import DataLoader, random_split
+
+from datasets import TextDataset
 from model import Model
 from transformers.optimization import get_linear_schedule_with_warmup
 from transformers import LlamaTokenizer, AutoModelForCausalLM, BatchEncoding
@@ -23,12 +26,6 @@ tokenizer = LlamaTokenizer.from_pretrained(
     use_fast=True,
 )
 
-dataset = []
-dataloader = []
-num_steps = len(dataloader)
-model = Model()
-print(model.named_parameters())
-# dictをtensorに変換する。textとlabelsにする
 def collate_fn(datalist) -> BatchEncoding:
     inputs = tokenizer(
         text= [d["text"] for d in datalist],
@@ -41,10 +38,35 @@ def collate_fn(datalist) -> BatchEncoding:
     labels = torch.LongTensor([d["labels"] for d in datalist])
     return BatchEncoding({ **inputs, "labels":labels })
 
-def train(model:Model):
+def create_dataloader(dataset):
+    dataloader = DataLoader(
+        dataset=dataset,
+        collate_fn=collate_fn,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=4,
+        pin_memory=True,
+    )
+
+    num = len(dataset)
+    train = num * 0.8
+    val = num - train
+
+    return random_split(dataset, [train, val])
+
+dataset = TextDataset()
+train_dataloader, val_dataloader = create_dataloader(dataset)
+print(train_dataloader, val_dataloader)
+num_steps = len(train_dataloader)
+model = Model()
+print([name for name, param in model.named_parameters()])
+# dictをtensorに変換する。textとlabelsにする
+def train(model:Model, dataloader):
     model.train()
 
-    optimizer = AdamW(model.named_parameters(), lr=lr)
+    best_val_f1 = 0
+    best_state_dict = model.state_dict()
+    optimizer = AdamW(model.parameters(), lr=lr)
     lr_scheduler = get_linear_schedule_with_warmup(
         optimizer=optimizer,
         num_warmup_steps=num_steps,
@@ -52,7 +74,7 @@ def train(model:Model):
     )
 
     for epoch in trange(epochs, dynamic_ncols=True):
-        for batch in tqdm(dataloader, dynamic_ncols=True):
+        for batch in tqdm(dataloader, total=len(dataloader), dynamic_ncols=True):
             optimizer.zero_grad()
             output = model(**batch)
             loss = output.loss
@@ -60,9 +82,23 @@ def train(model:Model):
 
             optimizer.step()
             lr_scheduler.step()
+
         model.eval()
+        val_outputs = evaluate(dataloader)
+
+        if  val_outputs["f1"] > best_val_f1:
+            best_val_f1 = val_outputs["f1"]
+            best_state_dict = model.state_dict()
+    model.load_state_dict(best_state_dict)
+    model.eval()
 
 
 
-def evaluate():
+
+
+def evaluate(dataloader):
     pass
+
+
+train(model, train_dataloader)
+

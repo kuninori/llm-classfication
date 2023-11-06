@@ -21,21 +21,27 @@ tokenizer = LlamaTokenizer.from_pretrained(
     use_fast=True,
 )
 
+
 class Model(nn.Module):
     def __init__(self):
         super(Model, self).__init__()
         backbone = AutoModelForCausalLM.from_pretrained(
-            model_name,
+            "stabilityai/japanese-stablelm-base-alpha-7b",
             trust_remote_code=True,
             load_in_8bit=True,
         )
         self.peft_config = LoraConfig(
-            task_type="CAUSAL_LM",
             r=lora_r,
             lora_alpha=16,
             lora_dropout=0.1,
             inference_mode=False,
-            target_modules=["embed_out"],
+            bias="none",
+            target_modules=[
+                "query_key_value",
+                "dense",
+                "packed_input_proj",
+                "out_proj",
+            ],
         )
         self.backbone: PeftModel = peft.get_peft_model(backbone, self.peft_config)
         self.backbone.enable_input_require_grads()
@@ -59,25 +65,28 @@ class Model(nn.Module):
         loss = self.loss_fn(logits, labels)
         return SequenceClassifierOutput(loss, logits)
 
-device = torch.device("cuda:0")
-model = Model()
-# model.to(device)
-model.eval()
 
-prompt = """
-AI で科学研究を加速するには
-""".strip()
-input_ids = tokenizer.encode(prompt, add_special_tokens=False, return_tensors="pt", )
+if __name__ == "__main__":
+    device = torch.device("cuda:0")
+    model = Model()
+    print(model)
+    # model.to(device)
+    model.eval()
 
-seed = 23
-torch.manual_seed(seed)
-tokens = model.backbone.generate(
-    input_ids=input_ids.to(device=device),
-    max_new_tokens=256,
-    temperature=1,
-    top_p=0.95,
-    do_sample=True,
-).to(device)
+    prompt = """
+    AI で科学研究を加速するには
+    """.strip()
+    input_ids = tokenizer.encode(prompt, add_special_tokens=False, return_tensors="pt", )
 
-out = tokenizer.decode(tokens[0], skip_special_tokens=True)
-print(out)
+    seed = 23
+    torch.manual_seed(seed)
+    tokens = model.backbone.generate(
+        input_ids=input_ids.to(device=device),
+        max_new_tokens=256,
+        temperature=1,
+        top_p=0.95,
+        do_sample=True,
+    ).to(device)
+
+    out = tokenizer.decode(tokens[0], skip_special_tokens=True)
+    print(out)
