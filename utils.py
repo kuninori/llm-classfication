@@ -1,8 +1,6 @@
-import json
 from pathlib import Path
-
-def load_json(str):
-    Path(str)
-    with file.open() as f:
-        data = json.load(f)
-    return data
+import json
+def read_taglist():
+    path = Path("./data/livedoor-tags.json")
+    with open(path, "r") as f:
+        return json.load(f)
