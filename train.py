@@ -8,29 +8,21 @@ from torch.utils.data import DataLoader, random_split
 from livedoor_datasets import LivedoorDataset
 from model import Model
 from transformers.optimization import get_linear_schedule_with_warmup
-from transformers import LlamaTokenizer, AutoModelForCausalLM, BatchEncoding
+from transformers import LlamaTokenizer, AutoModelForCausalLM, BatchEncoding, AutoTokenizer
 from sklearn.metrics import precision_recall_fscore_support, accuracy_score
 from accelerate import Accelerator
-
-torch.set_printoptions(edgeitems=1000000)
 
 lr = 5e-5
 max_seq_len = 128
 seed = 22
-batch_size = 4
+batch_size = 2
 epochs = 10
 model_name = "stabilityai/japanese-stablelm-base-alpha-7b",
 tokenizer_name = "novelai/nerdstash-tokenizer-v1"
 
 accelerator = Accelerator(cpu=False)
 taglist = utils.read_taglist()
-tokenizer = LlamaTokenizer.from_pretrained(
-    pretrained_model_name_or_path=tokenizer_name,
-    additional_special_tokens=['▁▁'],
-    max_seq_len=max_seq_len,
-    use_fast=True,
-    use_reentrant=False,
-)
+tokenizer = LlamaTokenizer.from_pretrained("novelai/nerdstash-tokenizer-v1", additional_special_tokens=['▁▁'])
 
 
 def collate_fn(datalist) -> BatchEncoding:
@@ -56,6 +48,7 @@ def dataloaders():
     train_dataset, val_dataset = random_split(dataset, [train_num, val_num])
     train_dataloader = create_dataloader(train_dataset)
     val_dataloader = create_dataloader(val_dataset)
+
     return train_dataloader, val_dataloader
 
 
@@ -73,13 +66,13 @@ def create_dataloader(dataset):
 train_dataloader, val_dataloader = dataloaders()
 num_steps = len(train_dataloader)
 model = Model(num_labels=len(taglist))
-
+model.backbone.print_trainable_parameters()
 
 # dictをtnsorに変換する。textとlabelsにする
 def train(model: Model, train_dataloader, val_dataloader):
     torch.autograd.set_detect_anomaly(True)
     model.train()
-    best_val_f1 = 0
+    best_val_loss = 0
     best_state_dict = model.state_dict()
     optimizer = AdamW(model.parameters(), lr=lr)
     lr_scheduler = get_linear_schedule_with_warmup(
@@ -110,11 +103,11 @@ def train(model: Model, train_dataloader, val_dataloader):
                 optimizer.zero_grad()
 
         model.eval()
-        (accuracy, f1, precision, recall) = evaluate(model, val_dataloader)
-        print(f"accuracy:{accuracy}, f1:{f1}, precision:{precision}, recall:{recall}")
+        (loss, accuracy, f1, precision, recall) = evaluate(model, val_dataloader)
+        print(f"loss:{loss}, accuracy:{accuracy}, f1:{f1}, precision:{precision}, recall:{recall}")
 
-        if f1 > best_val_f1:
-            best_val_f1 = f1
+        if loss < best_val_loss:
+            best_val_loss = loss
             best_state_dict = model.state_dict()
             torch.save(best_state_dict, "model.pth")
 
@@ -122,7 +115,6 @@ def train(model: Model, train_dataloader, val_dataloader):
     model.eval()
 
     torch.save(best_state_dict, "model.pth")
-
 
 def evaluate(model, dataloader):
     model.eval()
@@ -134,15 +126,14 @@ def evaluate(model, dataloader):
         output = model(**batch)
         batch_size = batch.input_ids.size(0)
         loss = output.loss.item() * batch_size
-        print("loss grad:::", output.loss.grad)
         pred_labels += output.logits.argmax(dim=-1).tolist()
         val_labels += batch.labels.tolist()
         total_loss += loss
 
     loss = total_loss / len(dataloader.dataset)
     accuracy = accuracy_score(pred_labels, val_labels)
+    print(total_loss, val_labels, pred_labels)
     precision, recall, f1, _ = precision_recall_fscore_support(
-        loss,
         val_labels,
         pred_labels,
         average="macro",

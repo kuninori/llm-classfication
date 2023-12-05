@@ -3,7 +3,7 @@ from pathlib import Path
 
 class LivedoorDataset(Dataset):
     def __init__(self):
-        l = list(Path("./data/livedoor/text").glob("*/*.txt"))[:10]
+        l = list(Path("./data/livedoor/text").glob("*/*.txt"))
         self.list = l
     def __getitem__(self, index):
         path = self.list[index]
@@ -16,6 +16,7 @@ class LivedoorDataset(Dataset):
 
             paths = path.parts
             label = paths[-2]
+
         return (text, label)
     def __len__(self):
         return len(self.list)
