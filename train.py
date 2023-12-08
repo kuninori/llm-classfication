@@ -11,19 +11,17 @@ from transformers.optimization import get_linear_schedule_with_warmup
 from transformers import LlamaTokenizer, AutoModelForCausalLM, BatchEncoding, AutoTokenizer
 from sklearn.metrics import precision_recall_fscore_support, accuracy_score
 from accelerate import Accelerator
+from config import model_name, tokenizer_name
 
-lr = 5e-5
+lr = 1e-3
 max_seq_len = 128
 seed = 22
 batch_size = 2
-epochs = 10
-model_name = "stabilityai/japanese-stablelm-base-alpha-7b",
-tokenizer_name = "novelai/nerdstash-tokenizer-v1"
+epochs = 12
 
 accelerator = Accelerator(cpu=False)
 taglist = utils.read_taglist()
-tokenizer = LlamaTokenizer.from_pretrained("novelai/nerdstash-tokenizer-v1", additional_special_tokens=['▁▁'])
-
+tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, use_fast=False)
 
 def collate_fn(datalist) -> BatchEncoding:
     inputs = tokenizer(
@@ -43,7 +41,7 @@ def collate_fn(datalist) -> BatchEncoding:
 def dataloaders():
     dataset = LivedoorDataset()
     all_num = len(dataset)
-    train_num = int(all_num * 0.7)
+    train_num = int(all_num * 0.8)
     val_num = int(all_num - train_num)
     train_dataset, val_dataset = random_split(dataset, [train_num, val_num])
     train_dataloader = create_dataloader(train_dataset)
@@ -58,8 +56,7 @@ def create_dataloader(dataset):
         collate_fn=collate_fn,
         batch_size=batch_size,
         shuffle=True,
-        num_workers=4,
-        pin_memory=True,
+        num_workers=2,
     )
 
 

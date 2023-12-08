@@ -5,13 +5,12 @@ import torch.nn as nn
 from torch import FloatTensor, LongTensor
 from transformers import  AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from transformers.modeling_outputs import BaseModelOutputWithPast, SequenceClassifierOutput
-
-lora_r = 2
+from config import model_name
+lora_r = 8
 max_seq_len = 128
-model_name = "stabilityai/japanese-stablelm-base-alpha-7b",
+
 
 print("bf16:", torch.cuda.is_bf16_supported())
-
 
 class Model(nn.Module):
     def __init__(self, num_labels):
@@ -26,13 +25,12 @@ class Model(nn.Module):
         )
 
         backbone = AutoModelForCausalLM.from_pretrained(
-            # "stabilityai/japanese-stablelm-3b-4e1t-base",
-            "stabilityai/japanese-stablelm-base-alpha-7b",
-            quantization_config=bnb_config,
+            model_name,
+            # quantization_config=bnb_config,
             trust_remote_code=True,
             output_attentions=True,
             output_hidden_states=True,
-            device_map="auto",
+            # device_map="auto",
             use_cache=False,
         )
         self.peft_config = LoraConfig(
